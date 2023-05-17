@@ -12,7 +12,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const extracted = new Map<string, string>()
 
-
 const plugin = (): Plugin => ({
   name: 'my-plugin',
 
@@ -33,6 +32,11 @@ const plugin = (): Plugin => ({
     if (id === 'virtual-module') {
       return 'console.log("This is virtual!")'
     }
+    console.log('load', id)
+  },
+
+  moduleParsed(moduleInfo) {
+    console.log('moduleParsed', moduleInfo.id, moduleInfo.importedIds)
   },
 
   generateBundle(_options, bundle) {
@@ -41,7 +45,6 @@ const plugin = (): Plugin => ({
     .filter(item => !!item) as OutputChunk[]
 
     chunks.forEach(chunk => {
-
       const getDependencies = (regexp: RegExp, currentChunk: OutputChunk): string[] => {
         return [
           ...Object.keys(currentChunk.modules).filter(id => id.match(regexp)),
@@ -64,6 +67,7 @@ const plugin = (): Plugin => ({
 
       const dependedVueIds = getDependencies(/\.vue$/g, chunk)
       console.log(dependedVueIds)
+      chunk.code = chunk.code + dependedVueIds.join(',') + '|||'
     })
   }
 })
