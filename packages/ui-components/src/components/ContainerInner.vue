@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { defineProps } from 'vue'
 
+const emit = defineEmits(['update'])
+
 defineProps<{ msg: string }>()
+
+emit('update', 'hoge')
 </script>
 
 <template>
@@ -14,6 +18,6 @@ defineProps<{ msg: string }>()
 .container-inner {
   width: 100%;
   height: 100%;
-  background-color: #fff;
+  color: blue;
 }
 </style>

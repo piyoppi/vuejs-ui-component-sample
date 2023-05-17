@@ -1,19 +1,17 @@
 import { Plugin, defineConfig } from 'vite'
+import { parse } from 'path'
 import vue from '@vitejs/plugin-vue'
 
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-
 import dts from 'vite-plugin-dts'
 
 import { OutputChunk } from 'rollup'
 
-//import styles from 'rollup-plugin-styles'
-
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const extracted = new Map<string, string>()
-let cnt = 0
+
 
 const plugin = (): Plugin => ({
   name: 'my-plugin',
@@ -21,30 +19,51 @@ const plugin = (): Plugin => ({
   async transform(code, id) {
     if (id.endsWith('.css')) {
       extracted.set(id, code)
+      return
+    }
+  },
+
+  resolveId(source) {
+    if (source === 'virtual-module') {
+      return source
+    }
+  },
+
+  load(id) {
+    if (id === 'virtual-module') {
+      return 'console.log("This is virtual!")'
     }
   },
 
   generateBundle(_options, bundle) {
-    const chunks = Object.entries(bundle).map(([key, value]) => value.type === 'chunk' ? value : null).filter(item => !!item)
+    const chunks = Object.values(bundle)
+    .map(value => value.type === 'chunk' ? value : null)
+    .filter(item => !!item) as OutputChunk[]
 
     chunks.forEach(chunk => {
-      const findDepententCss = (currentChunk: OutputChunk) => {
-        return [
-          ...Object.keys(currentChunk.modules).filter((key) => key.endsWith('.css')),
-          ...chunk.imports.map(id => findDepententCss())
-        ]
 
-        //return [...chunks.filter(c => c.imports.some(id => id.endsWith('.css'))), ...findDepententCss(currentChunk)].flat()
+      const getDependencies = (regexp: RegExp, currentChunk: OutputChunk): string[] => {
+        return [
+          ...Object.keys(currentChunk.modules).filter(id => id.match(regexp)),
+            ...currentChunk.imports.map(id => {
+            const nextChunk = chunks.find(c => c.fileName === id)
+            if (!nextChunk) return ''
+
+              return getDependencies(regexp, nextChunk)
+          }).filter(item => !!item).flat()
+        ]
       }
 
-      const dependedCssIds = [
-        //...Object.keys(chunk.modules).filter((key) => key.endsWith('.css')),
-        ...findDepententCss(chunk)
-      ]
-      console.log(dependedCssIds)
+      const dependedCssIds = getDependencies(/\.css$/g, chunk)
+      const css = dependedCssIds.reduce((acc, id) => acc + extracted.get(id), '')
+      const assetFilename = parse(chunk.fileName).name.replace(/\..*/g, '')
 
-      const dependedCssList = dependedCssIds.map(id => extracted.get(id))
-      dependedCssList.forEach(css => this.emitFile({type: 'asset', name: `styles${cnt++}.css`, source: css}))
+      if (css) {
+        this.emitFile({type: 'asset', fileName: `${assetFilename}.css`, source: css})
+      }
+
+      const dependedVueIds = getDependencies(/\.vue$/g, chunk)
+      console.log(dependedVueIds)
     })
   }
 })
@@ -53,13 +72,15 @@ export default defineConfig({
   build: {
     lib: {
       entry: [
-        resolve(__dirname, 'src/components/Container.vue'),
-        resolve(__dirname, 'src/components/ContainerInner.vue')
+        //resolve(__dirname, 'src/components/Container.vue'),
+        //resolve(__dirname, 'src/components/ContainerInner.vue'),
+        resolve(__dirname, 'src/main.ts')
       ],
       name: 'MyLib',
-      formats: ['es'],
+      formats: ['umd'],
       fileName: (format, entryName) => `${entryName}.${format}.js`,
     },
+    minify: false,
     rollupOptions: {
       external: ['vue'],
       output: {
@@ -71,12 +92,10 @@ export default defineConfig({
     cssCodeSplit: false,
   },
   plugins: [
-    vue(),
-    dts(),
+    vue({
+      customElement: true,
+    }),
     plugin(),
-    //styles({
-    //  mode: 'extract'
-    //})
   ],
 })
 

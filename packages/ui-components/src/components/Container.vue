@@ -12,6 +12,6 @@ import ContainerInner from './ContainerInner.vue'
 .container-outer {
   width: 100%;
   height: 100%;
-  background-color: #fff;
+  background-color: gainsboro;
 }
 </style>

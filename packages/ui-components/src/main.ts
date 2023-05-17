@@ -1,3 +1,10 @@
-import HelloWorld from './components/HelloWorld.vue';
+import Container from './components/Container.vue'
+import { defineCustomElement } from 'vue'
 
-export { HelloWorld };
+export { Container }
+
+import 'virtual-module'
+
+const ce = defineCustomElement(Container)
+console.log(Container)
+customElements.define('my-container', ce)
