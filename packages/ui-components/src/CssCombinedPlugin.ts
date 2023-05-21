@@ -9,13 +9,44 @@ type ExtractingInfo = {
   replacement: string,
 }
 
+type CssCombinedPromiseInfo = {
+  id: string,
+  argument: string,
+}
+
 export const CssCombinedPlugin = (): Plugin  => {
   const extractingIds: ExtractingInfo[] = []
   const cssCombinedDependencies = new Map<string, string[]>()
+  const cssCombinedPromiseId = new Map<string, CssCombinedPromiseInfo>()
   let count = 0
 
   return {
     name: 'css-combined-plugin',
+
+    resolveId(id) {
+      if (id.match(/CssCombinedPluginPromise\d+/)) {
+        return id
+      }
+    },
+
+    load(id) {
+      if (id.match(/CssCombinedPluginPromise\d+/)) {
+        const item = cssCombinedPromiseId.get(id) 
+
+        if (item) {
+          const replacement = `'' /* CssCombinedPluginPlace -- ${count++} */`
+          const code = `export default ${replacement};`
+
+          const targetId = join(dirname(item.id), item.argument)
+          extractingIds.push({
+            id: targetId,
+            replacement
+          })
+
+          return code
+        }
+      }
+    },
 
     transform(code, id) {
       const hasCssFunction = code.match(/getCombinedCss\((.*)\)/)
@@ -23,28 +54,52 @@ export const CssCombinedPlugin = (): Plugin  => {
 
       if (hasCssFunction) {
         const parsed = this.parse(code) as any
+
         const hasIncluded = parsed.body.some((item: any) => item.type === 'ImportDeclaration' && item.specifiers.find((item: any) => item.type === 'ImportSpecifier' && item.imported.name === 'getCombinedCss'))
+        const hasIncludedPromise = parsed.body.some((item: any) => item.type === 'ImportDeclaration' && item.specifiers.find((item: any) => item.type === 'ImportSpecifier' && item.imported.name === 'getCombinedCssPromise'))
 
-        if (hasIncluded) {
-          simple(parsed, {
-            CallExpression(node: any) {
-              if (node.callee.name === 'getCombinedCss') {
-                const { start, end } = node
-                const replacement = `'' /* CssCombinedPlugin -- ${count++} */`
-                transformedCode = code.slice(0, start) + replacement + code.slice(end)
+        if (!hasIncluded && !hasIncludedPromise) return null
 
-                const targetId = join(dirname(id), node.arguments[0].value)
-                extractingIds.push({
-                  id: targetId,
-                  replacement
-                })
-              }
+        const nodes: any[] = []
+
+        simple(parsed, {
+          CallExpression(node: any) {
+            if (hasIncluded && node.callee.name === 'getCombinedCss') {
+              nodes.push(node)
             }
-          })
-        }
-      }
 
-      return transformedCode
+            if (hasIncludedPromise && node.callee.name === 'getCombinedCssPromise') {
+              nodes.push(node)
+            }
+          }
+        })
+
+        nodes.sort((a: any, b: any) => b.start - a.start).forEach((node: any) => {
+          const { start, end } = node
+
+          if (node.callee.name === 'getCombinedCss') {
+            const replacement = `'' /* CssCombinedPluginPlace -- ${count++} */`
+            transformedCode = transformedCode.slice(0, start) + replacement + transformedCode.slice(end)
+
+            const targetId = join(dirname(id), node.arguments[0].value)
+            extractingIds.push({
+              id: targetId,
+              replacement
+            })
+          }
+
+          if (node.callee.name === 'getCombinedCssPromise') {
+            const importId = `CssCombinedPluginPromise${count++}`
+
+            const importStatement = `import('${importId}')`
+            transformedCode = transformedCode.slice(0, start) + importStatement + transformedCode.slice(end)
+
+            cssCombinedPromiseId.set(importId, {id: id, argument: node.arguments[0].value as string})
+          }
+        })
+
+        return transformedCode
+      }
     },
 
     buildEnd() {
