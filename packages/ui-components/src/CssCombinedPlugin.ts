@@ -4,136 +4,145 @@ import { Plugin } from 'vite'
 import { join, dirname } from 'path'
 import { simple } from 'acorn-walk'
 
-type ExtractingInfo = {
-  id: string,
-  replacement: string,
+type ReplaceMarker = {
+  extractingComponentId: string,
+  marker: string,
 }
 
-type CssCombinedPromiseInfo = {
+type CssImportStatementInfo = {
   id: string,
   argument: string,
 }
 
+const FUNC_NAME = 'getCombinedCss'
+const FUNC_NAME_PROMISE = 'getCombinedCssPromise'
+const CSS_ID_PREFIX = 'CssCombinedPluginPromise'
+
 export const CssCombinedPlugin = (): Plugin  => {
-  const extractingIds: ExtractingInfo[] = []
-  const cssCombinedDependencies = new Map<string, string[]>()
-  const cssCombinedPromiseId = new Map<string, CssCombinedPromiseInfo>()
+  const replaceMarkers: ReplaceMarker[] = []
+  const cssDependencies = new Map<string, string[]>()
+  const cssImports = new Map<string, CssImportStatementInfo>()
   let count = 0
+
+  const isReplacedCssImport = (id: string) => cssImports.has(id)
+  const createCssImportId = () => `${CSS_ID_PREFIX}${count++}`
 
   return {
     name: 'css-combined-plugin',
 
     resolveId(id) {
-      if (id.match(/CssCombinedPluginPromise\d+/)) {
+      if (isReplacedCssImport(id)) {
         return id
       }
+
+      return null
     },
 
     load(id) {
-      if (id.match(/CssCombinedPluginPromise\d+/)) {
-        const item = cssCombinedPromiseId.get(id) 
+      if (isReplacedCssImport(id)) {
+        const item = cssImports.get(id) 
 
-        if (item) {
-          const replacement = `'' /* CssCombinedPluginPlace -- ${count++} */`
-          const code = `export default ${replacement};`
+        if (!item) return
 
-          const targetId = join(dirname(item.id), item.argument)
-          extractingIds.push({
-            id: targetId,
-            replacement
-          })
+        const marker = `'' /* CssCombinedPluginPlace(Promise) -- ${count++} */`
 
-          return code
-        }
+        replaceMarkers.push({
+          extractingComponentId: join(dirname(item.id), item.argument),
+          marker
+        })
+
+        return `export default ${marker};`
       }
     },
 
     transform(code, id) {
-      const hasCssFunction = code.match(/getCombinedCss\((.*)\)/)
+      const hasCssFunction = code.match(new RegExp(`${FUNC_NAME}\((.*)\)`)) || code.match(new RegExp(`${FUNC_NAME_PROMISE}\((.*)\)`))
+
+      // 置換対象の関数の文字列がない場合は何もしない
+      if (!hasCssFunction) return null
+
       let transformedCode = code
+      const parsed = this.parse(code) as any
 
-      if (hasCssFunction) {
-        const parsed = this.parse(code) as any
+      const hasIncluded = parsed.body.some((item: any) => item.type === 'ImportDeclaration' && item.specifiers.find((item: any) => item.type === 'ImportSpecifier' && item.imported.name === FUNC_NAME))
+      const hasIncludedPromise = parsed.body.some((item: any) => item.type === 'ImportDeclaration' && item.specifiers.find((item: any) => item.type === 'ImportSpecifier' && item.imported.name === FUNC_NAME_PROMISE))
 
-        const hasIncluded = parsed.body.some((item: any) => item.type === 'ImportDeclaration' && item.specifiers.find((item: any) => item.type === 'ImportSpecifier' && item.imported.name === 'getCombinedCss'))
-        const hasIncludedPromise = parsed.body.some((item: any) => item.type === 'ImportDeclaration' && item.specifiers.find((item: any) => item.type === 'ImportSpecifier' && item.imported.name === 'getCombinedCssPromise'))
+      // 置換対象の関数をインポートしていない場合は何もしない
+      if (!hasIncluded && !hasIncludedPromise) return null
 
-        if (!hasIncluded && !hasIncludedPromise) return null
+      const nodes: any[] = []
 
-        const nodes: any[] = []
-
-        simple(parsed, {
-          CallExpression(node: any) {
-            if (hasIncluded && node.callee.name === 'getCombinedCss') {
-              nodes.push(node)
-            }
-
-            if (hasIncludedPromise && node.callee.name === 'getCombinedCssPromise') {
-              nodes.push(node)
-            }
-          }
-        })
-
-        nodes.sort((a: any, b: any) => b.start - a.start).forEach((node: any) => {
-          const { start, end } = node
-
-          if (node.callee.name === 'getCombinedCss') {
-            const replacement = `'' /* CssCombinedPluginPlace -- ${count++} */`
-            transformedCode = transformedCode.slice(0, start) + replacement + transformedCode.slice(end)
-
-            const targetId = join(dirname(id), node.arguments[0].value)
-            extractingIds.push({
-              id: targetId,
-              replacement
-            })
+      simple(parsed, {
+        CallExpression(node: any) {
+          if (node.callee.name === FUNC_NAME && hasIncluded) {
+            nodes.push(node)
           }
 
-          if (node.callee.name === 'getCombinedCssPromise') {
-            const importId = `CssCombinedPluginPromise${count++}`
-
-            const importStatement = `import('${importId}')`
-            transformedCode = transformedCode.slice(0, start) + importStatement + transformedCode.slice(end)
-
-            cssCombinedPromiseId.set(importId, {id: id, argument: node.arguments[0].value as string})
+          if (node.callee.name === FUNC_NAME_PROMISE && hasIncludedPromise) {
+            nodes.push(node)
           }
-        })
+        }
+      })
 
-        return transformedCode
-      }
+      // ソースコードを置換する（マーカーを置く）
+      // ソースコードを後ろから置換することで、置換箇所のインデックスがずれないようにする
+      nodes.sort((a: any, b: any) => b.start - a.start).forEach((node: any) => {
+        const { start, end } = node
+
+        if (node.callee.name === FUNC_NAME) {
+          const marker = `'' /* CssCombinedPluginPlace -- ${count++} */`
+          transformedCode = transformedCode.slice(0, start) + marker + transformedCode.slice(end)
+
+          replaceMarkers.push({
+            extractingComponentId: join(dirname(id), node.arguments[0].value),
+            marker
+          })
+        }
+
+        if (node.callee.name === FUNC_NAME_PROMISE) {
+          const importId = createCssImportId()
+
+          // 動的インポートに置換する
+          // load で動的インポートしたファイルを置換する
+          const importStatement = `import('${importId}')`
+          transformedCode = transformedCode.slice(0, start) + importStatement + transformedCode.slice(end)
+
+          cssImports.set(importId, {id: id, argument: node.arguments[0].value as string})
+        }
+      })
+
+      return transformedCode
     },
 
     buildEnd() {
-      const getDependencies = (currentModle: ModuleInfo): string[] => {
+      // 指定したモジュールに依存する CSS ファイルを取得する
+      const getCssDependencies = (currentModle: ModuleInfo): string[] => {
         return [
           ...currentModle.importedIds.filter(id => id.match(/\.css$/)),
             ...currentModle.importedIds.map(id => {
             const nextModule = this.getModuleInfo(id)
             if (!nextModule) return ''
 
-              return getDependencies(nextModule)
+              return getCssDependencies(nextModule)
           }).filter(item => !!item).flat()
         ]
       }
 
-      const ids = this.getModuleIds()
-
-      Array.from(ids).forEach(id => {
+      Array.from(this.getModuleIds()).forEach(id => {
         const moduleInfo = this.getModuleInfo(id)
         if (!moduleInfo) return
-          cssCombinedDependencies.set(id, getDependencies(moduleInfo))
+        cssDependencies.set(id, getCssDependencies(moduleInfo))
       })
     },
 
     renderChunk(code, _chunk) {
-      const css = extractingIds.reduce((acc, { id, replacement }) => {
-        const dependencies = cssCombinedDependencies.get(id)
-        if (!dependencies) return acc
+      // 設置されたマーカーを置換する
+      return replaceMarkers.reduce((acc, { extractingComponentId, marker }) => {
+        if (!code.includes(marker)) return acc
 
-          const css = dependencies.reduce((acc, id) => acc + this.getModuleInfo(id)?.code?.replace(/export default "(.*)"/, '$1'), '')
-          return acc.replace(replacement, `"${css}"`)
+        const css = cssDependencies.get(extractingComponentId)?.reduce((acc, id) => acc + this.getModuleInfo(id)?.code?.replace(/export default "(.*)"/, '$1'), '') || '""'
+        return acc.replace(marker, `"${css}"`)
       }, code)
-
-      return css
     }
   }
 }
