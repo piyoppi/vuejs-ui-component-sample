@@ -10,5 +10,8 @@
     "packages/**/*"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "acorn-walk": "^8.2.0"
+  }
 }

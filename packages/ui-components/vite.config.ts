@@ -4,9 +4,9 @@ import vue from '@vitejs/plugin-vue'
 
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import dts from 'vite-plugin-dts'
 
 import { OutputChunk } from 'rollup'
+import { CssCombinedPlugin } from './src/CssCombinedPlugin'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -20,23 +20,6 @@ const plugin = (): Plugin => ({
       extracted.set(id, code)
       return
     }
-  },
-
-  resolveId(source) {
-    if (source === 'virtual-module') {
-      return source
-    }
-  },
-
-  load(id) {
-    if (id === 'virtual-module') {
-      return 'console.log("This is virtual!")'
-    }
-    console.log('load', id)
-  },
-
-  moduleParsed(moduleInfo) {
-    console.log('moduleParsed', moduleInfo.id, moduleInfo.importedIds)
   },
 
   generateBundle(_options, bundle) {
@@ -64,10 +47,6 @@ const plugin = (): Plugin => ({
       if (css) {
         this.emitFile({type: 'asset', fileName: `${assetFilename}.css`, source: css})
       }
-
-      const dependedVueIds = getDependencies(/\.vue$/g, chunk)
-      console.log(dependedVueIds)
-      chunk.code = chunk.code + dependedVueIds.join(',') + '|||'
     })
   }
 })
@@ -84,22 +63,23 @@ export default defineConfig({
       formats: ['umd'],
       fileName: (format, entryName) => `${entryName}.${format}.js`,
     },
-    minify: false,
-    rollupOptions: {
-      external: ['vue'],
-      output: {
-        globals: {
-          vue: 'Vue',
-        },
-      }
-    },
-    cssCodeSplit: false,
+      minify: false,
+      rollupOptions: {
+        external: ['vue'],
+        output: {
+          globals: {
+            vue: 'Vue',
+          },
+        }
+      },
+      cssCodeSplit: false,
   },
   plugins: [
     vue({
       customElement: true,
     }),
     plugin(),
+    CssCombinedPlugin()
   ],
 })
 

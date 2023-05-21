@@ -1,12 +1,14 @@
 import Container from './components/Container.vue'
 import HelloWorld from './components/HelloWorld.vue'
 import { defineCustomElement } from 'vue'
-
+import { getCombinedCss } from './CssCombinedPluginBrowser'
 export { Container }
 
-import 'virtual-module'
+const css = getCombinedCss('./components/Container.vue')
 
-const ce = defineCustomElement(Container)
+console.log(css)
+
+const ce = defineCustomElement({...Container, styles: [css]} as any)
 customElements.define('my-container', ce)
 
 const ce2 = defineCustomElement(HelloWorld)

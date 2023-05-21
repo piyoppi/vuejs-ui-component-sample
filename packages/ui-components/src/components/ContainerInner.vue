@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { defineProps } from 'vue'
 
-const emit = defineEmits(['update'])
-
 defineProps<{ msg: string }>()
-
-emit('update', 'hoge')
 </script>
 
 <template>
