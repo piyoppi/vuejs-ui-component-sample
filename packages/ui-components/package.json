@@ -11,6 +11,13 @@
     "@types/node": "^18.16.0",
     "vue": "^3.2.47"
   },
+  "exports": {
+    "./*": {
+      "import": "./dist/*.js",
+      "types": "./dist/*.ts"
+    },
+    "./*.css": "./*.css"
+  },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.1.0",
     "rollup-plugin-styles": "^4.0.0",

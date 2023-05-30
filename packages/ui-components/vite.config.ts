@@ -1,12 +1,12 @@
 import { Plugin, defineConfig } from 'vite'
 import { parse } from 'path'
 import vue from '@vitejs/plugin-vue'
+import dts from 'vite-plugin-dts'
 
-import { dirname, resolve } from 'path'
+import { dirname, resolve, join } from 'path'
 import { fileURLToPath } from 'url'
 
 import { OutputChunk } from 'rollup'
-import { CssCombinedPlugin } from './src/CssCombinedPlugin'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -42,7 +42,7 @@ const plugin = (): Plugin => ({
 
       const dependedCssIds = getDependencies(/\.css$/g, chunk)
       const css = dependedCssIds.reduce((acc, id) => acc + extracted.get(id), '')
-      const assetFilename = parse(chunk.fileName).name.replace(/\..*/g, '')
+      const assetFilename = chunk.fileName.replace(join(__dirname, 'src'), '')
 
       if (css) {
         this.emitFile({type: 'asset', fileName: `${assetFilename}.css`, source: css})
@@ -54,32 +54,33 @@ const plugin = (): Plugin => ({
 export default defineConfig({
   build: {
     lib: {
-      entry: [
-        //resolve(__dirname, 'src/components/Container.vue'),
-        //resolve(__dirname, 'src/components/ContainerInner.vue'),
-        resolve(__dirname, 'src/main.ts')
-      ],
-      name: 'MyLib',
-      formats: ['umd'],
-      fileName: (format, entryName) => `${entryName}.${format}.js`,
-    },
-      minify: false,
-      rollupOptions: {
-        external: ['vue'],
-        output: {
-          globals: {
-            vue: 'Vue',
-          },
-        }
+      entry: {
+        'components/Container.vue': resolve(__dirname, 'src/components/Container.vue'),
+        'components/ContainerInner.vue': resolve(__dirname, 'src/components/ContainerInner.vue'),
       },
-      cssCodeSplit: false,
+      name: 'MyLib',
+      formats: ['es'],
+      fileName: (_format, entryName) => `${entryName}.js`,
+    },
+    minify: false,
+    rollupOptions: {
+      external: ['vue'],
+      output: {
+        globals: {
+          vue: 'Vue',
+        },
+      }
+    },
+  },
+  define: {
+    'process.env.NODE_ENV': '"production"',
   },
   plugins: [
     vue({
       customElement: true,
     }),
     plugin(),
-    CssCombinedPlugin()
+    dts()
   ],
 })
 
