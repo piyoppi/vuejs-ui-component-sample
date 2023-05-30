@@ -16,7 +16,9 @@
       "import": "./dist/*.js",
       "types": "./dist/*.ts"
     },
-    "./*.css": "./*.css"
+    "./*.css": {
+      "import": "./*.css"
+    }
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.1.0",
